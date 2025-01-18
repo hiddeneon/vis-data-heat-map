@@ -1,6 +1,6 @@
 # Monthly Global Land-Surface Temperature Heat Map
 
-This interactive heat map visualizes the monthly global land-surface temperature anomalies from 1753 to the 2015. Each cell represents a month and year, with color coding based on temperature deviation from a base temperature.
+This interactive heat map visualizes the monthly global land-surface temperature anomalies from 1753 to 2015. Each cell represents a month and year, with color coding based on temperature deviation from a base temperature.
 
 ## Features
 
