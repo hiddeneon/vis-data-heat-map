@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Visualization Data Heat Map</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+
+      #tooltip {
+        position: absolute;
+        background-color: aquamarine;
+        padding: .6rem;
+        border-radius: .5rem;
+        pointer-events: none;
+      }
+
+      .overlay {
+        position: absolute;
+        z-index: 5;
+      }
+
+      .cell {
+        pointer-events: all;
+      }
+
+      /* Remove z-index from legend, instead rely on order of elements */
+      #legend {
+        position: absolute;  /* Ensure it's positioned correctly outside of the SVG */
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">Monthly Global Land-Surface Temperature</h1>
+    <span id="description"></span>
+    <div id="container"></div>
+    <script type="module">
+      import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+
+      const url = "https://raw.githubusercontent.com/freeCodeCamp/ProjectReferenceData/master/global-temperature.json";
+
+      const width = 1400;
+      const height = 500;
+      const margin = { top: 60, right: 20, bottom: 60, left: 80 };
+
+      const tooltip = d3
+        .select("#container")
+        .append("div")
+        .attr("id", "tooltip")
+        .style("opacity", 0);
+
+      const svg = d3
+        .select("#container")
+        .append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const getAndVisualize = async () => {
+        try {
+          const data = await fetch(url);
+          const res = await data.json();
+          constructMap(res);
+          writeDescription(res);
+          createLegend(res);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      const constructMap = (data) => {
+        const years = data.monthlyVariance.map((item) => item.year);
+        const xScale = d3
+          .scaleTime()
+          .domain(d3.extent(years, (d) => new Date(d, 0, 1)))
+          .range([0, width]);
+        const xAxis = d3
+          .axisBottom(xScale)
+          .ticks(d3.timeYear.every(10))
+          .tickFormat(d3.timeFormat("%Y"));
+
+        svg
+          .append("g")
+          .attr("id", "x-axis")
+          .attr("transform", `translate(0,${height})`)
+          .call(xAxis);
+
+        const yDomain = [1, 12];
+        const tickInterval = (yDomain[1] - yDomain[0]) / 11;
+        const extendedYDomain = [
+          yDomain[0] - tickInterval / 2,
+          yDomain[1] + tickInterval / 2,
+        ];
+
+        const yScale = d3
+          .scaleLinear()
+          .domain(extendedYDomain)
+          .range([0, height]);
+        const yAxis = d3
+          .axisLeft(yScale)
+          .tickFormat((d) => d3.timeFormat("%B")(new Date(0, d - 1)))
+          .ticks(12);
+
+        svg
+          .append("g")
+          .attr("id", "y-axis")
+          .call(yAxis);
+
+        const cellWidth = width / (Math.max(...years) - Math.min(...years));
+        const cellHeight = height / 12;
+
+        svg
+          .selectAll("rect")
+          .data(data.monthlyVariance)
+          .enter()
+          .append("rect")
+          .attr("class", "cell")
+          .attr("x", (d) => xScale(new Date(d.year, 0, 1)))
+          .attr("y", (d) => yScale(d.month - 0.5))
+          .attr("height", cellHeight)
+          .attr("width", cellWidth)
+          .attr("data-year", (d) => d.year)
+          .attr("data-month", (d) => d.month - 1)
+          .attr("data-temp", (d) => d.variance)
+          .style("fill", (d) => {
+            const baseTemp = data.baseTemperature;
+            const temp = baseTemp + d.variance;
+            if (temp < 3) return "blue";
+            if (temp < 6) return "lightblue";
+            if (temp < 9) return "yellow";
+            if (temp < 12) return "orange";
+            return "red";
+          })
+          .on("mouseover", (event, d) => {
+            const xPos = xScale(new Date(d.year, 0, 1));
+            const yPos = yScale(d.month - 0.5);
+
+          tooltip
+            .attr("data-year", d.year)
+            .style("opacity", 0.9)
+            .html(
+              `${d.year} - ${d3.timeFormat("%B")(new Date(0, d.month - 1))}<br>${(data.baseTemperature + d.variance).toFixed(1)}°C`
+            )
+            .style("left", `${xPos + 50}px`)
+            .style("top", `${yPos + 70}px`);
+
+          overlay
+            .attr("x", xPos)
+            .attr("y", yPos)
+            .attr("width", cellWidth)
+            .attr("height", cellHeight)
+            .style("opacity", 1);
+          })
+
+          .on("mouseout", () => {
+            tooltip.style("opacity", 0);
+            overlay.style("opacity", 0);
+          });
+
+        const overlay = svg
+          .append("rect")
+          .attr("class", "overlay")
+          .style("stroke", "black")
+          .style("stroke-width", 2)
+          .style("fill", "none")
+          .style("pointer-events", "none")
+          .style("opacity", 0);
+      };
+
+      const writeDescription = (data) => {
+        document.getElementById("description").textContent = `Base temperature ${data.baseTemperature}°C`;
+      };
+
+      const createLegend = (data) => {
+        const legendData = [
+          { color: "blue", label: "< 3°C" },
+          { color: "lightblue", label: "3°C - 6°C" },
+          { color: "yellow", label: "6°C - 9°C" },
+          { color: "orange", label: "9°C - 12°C" },
+          { color: "red", label: ">= 12°C" },
+        ];
+
+        const legend = d3
+          .select("#container")
+          .append("svg")
+          .attr("width", 200)  // Create a separate SVG for the legend
+          .attr("height", 180)
+          .attr("id", "legend")
+          .style("position", "absolute")
+          .style("top", "10px")
+          .style("left", `${width + 30}px`); // Positioning it to the right of the chart
+
+        legend
+          .selectAll("rect")
+          .data(legendData)
+          .enter()
+          .append("rect")
+          .attr("x", 10)
+          .attr("y", (d, i) => 30 + i * 30)
+          .attr("width", 20)
+          .attr("height", 20)
+          .style("fill", (d) => d.color);
+
+        legend
+          .selectAll("text")
+          .data(legendData)
+          .enter()
+          .append("text")
+          .attr("x", 40)
+          .attr("y", (d, i) => 40 + i * 30)
+          .text((d) => d.label)
+          .style("font-size", "14px")
+          .style("alignment-baseline", "middle");
+      };
+
+      getAndVisualize();
+    </script>
+    <script src="https://cdn.freecodecamp.org/testable-projects-fcc/v1/bundle.js"></script>
+  </body>
+</html>
